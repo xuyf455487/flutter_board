@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_board/test_json.dart';
 import '../widgets/drawing_canvas.dart';
 import '../models/drawing_tool.dart';
 
@@ -17,11 +19,53 @@ class _DrawingPageState extends State<DrawingPage> {
   DrawingTool selectedTool = DrawingTool.pen;      // 当前选中的工具
   double selectedSize = 2.0;                       // 当前选中的画笔大小
 
+  // 将绘画内容转换为 JSON 字符串
+  String exportToJson() {
+    final List<Map<String, dynamic>> jsonList = drawingPoints
+        .where((point) => point != null)
+        .map((point) => point!.toJson())
+        .toList();
+    return jsonEncode(jsonList);
+  }
+
+  // 从 JSON 字符串还原绘画内容
+  void importFromJson(String jsonString) {
+    final List<dynamic> jsonList = jsonDecode(jsonString);
+    setState(() {
+      drawingPoints = jsonList
+          .map((json) => DrawingPoint.fromJson(json))
+          .toList();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Drawing Board'),        // 页面标题
+        actions: [
+          // 添加导出按钮
+          IconButton(
+            icon: const Icon(Icons.save),
+            tooltip: '导出',
+            onPressed: () {
+              final jsonString = exportToJson();
+              // 这里可以保存到文件或其他存储
+              print(jsonString);  // 临时打印用于测试
+            },
+          ),
+          // 添加导入按钮
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: '导入',
+            onPressed: () {
+              // 这里应该有文件选择或输入对话框
+              // 临时使用一个示例 JSON 进行测试
+              // const testJson = '[{"offset":{"dx":100,"dy":100},"paint":{"color":4294198070,"strokeWidth":2,"strokeCap":1,"style":0},"type":0}]';
+              importFromJson(TestJson.testJson);
+            },
+          ),
+        ],
       ),
       body: Stack(
         children: [

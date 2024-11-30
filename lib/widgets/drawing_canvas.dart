@@ -192,7 +192,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   void _handleShapeDraw(Offset position) {
     widget.onDrawingPointsChanged([
       ...widget.drawingPoints.where((point) => 
-        point?.type != DrawingTool.rectangle || 
+        point?.type != widget.selectedTool || 
         point?.startPoint != startPoint).toList(),
       DrawingPoint(
         offset: position,
@@ -202,7 +202,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
           ..strokeWidth = widget.selectedSize
           ..strokeCap = StrokeCap.round
           ..style = PaintingStyle.stroke,
-        type: DrawingTool.rectangle,
+        type: widget.selectedTool,
       ),
     ]);
   }
@@ -216,62 +216,71 @@ class DrawingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 绘制画笔和马赛克轨迹
-    for (int i = 0; i < drawingPoints.length - 1; i++) {
-      if (drawingPoints[i] != null && drawingPoints[i + 1] != null) {
-        if (drawingPoints[i]!.type == DrawingTool.pen) {
-          canvas.drawLine(
-            drawingPoints[i]!.offset,
-            drawingPoints[i + 1]!.offset,
-            drawingPoints[i]!.paint,
-          );
-        } else if (drawingPoints[i]!.type == DrawingTool.mosaic) {
-          // 绘制马赛克方块
+    // 按顺序绘制所有内容
+    for (var point in drawingPoints) {
+      if (point == null) continue;  // 跳过空值
+
+      switch (point.type) {
+        case DrawingTool.pen:
+          // 画笔需要特殊处理连续的点
+          final nextIndex = drawingPoints.indexOf(point) + 1;
+          if (nextIndex < drawingPoints.length && drawingPoints[nextIndex] != null) {
+            canvas.drawLine(
+              point.offset,
+              drawingPoints[nextIndex]!.offset,
+              point.paint,
+            );
+          }
+          break;
+          
+        case DrawingTool.arrow:
+          if (point.startPoint != null) {
+            drawArrow(canvas, point.startPoint!, point.offset, point.paint);
+          }
+          break;
+          
+        case DrawingTool.rectangle:
+          if (point.startPoint != null) {
+            final rect = Rect.fromPoints(point.startPoint!, point.offset);
+            canvas.drawRect(rect, point.paint);
+          }
+          break;
+          
+        case DrawingTool.oval:
+          if (point.startPoint != null) {
+            final rect = Rect.fromPoints(point.startPoint!, point.offset);
+            canvas.drawOval(rect, point.paint);
+          }
+          break;
+          
+        case DrawingTool.mosaic:
           canvas.drawRect(
             Rect.fromCenter(
-              center: drawingPoints[i]!.offset,
-              width: drawingPoints[i]!.paint.strokeWidth,
-              height: drawingPoints[i]!.paint.strokeWidth,
+              center: point.offset,
+              width: point.paint.strokeWidth,
+              height: point.paint.strokeWidth,
             ),
-            drawingPoints[i]!.paint,
+            point.paint,
           );
-        }
-      }
-    }
-
-    // 绘制箭头和形状
-    for (var point in drawingPoints) {
-      if (point?.type == DrawingTool.arrow && point?.startPoint != null) {
-        drawArrow(canvas, point!.startPoint!, point.offset, point.paint);
-      } else if (point?.type == DrawingTool.rectangle && point?.startPoint != null) {
-        if (point != null) {
-          final rect = Rect.fromPoints(point.startPoint!, point.offset);
-          canvas.drawRect(rect, point.paint);
-        }
-      } else if (point?.type == DrawingTool.oval && point?.startPoint != null) {
-        if (point != null) {
-          final rect = Rect.fromPoints(point.startPoint!, point.offset);
-          canvas.drawOval(rect, point.paint);
-        }
-      }
-    }
-
-    // 绘制文字
-    for (var point in drawingPoints) {
-      if (point?.type == DrawingTool.text && point?.text != null) {
-        final textSpan = TextSpan(
-          text: point!.text,
-          style: TextStyle(
-            color: point.paint.color,
-            fontSize: 20,
-          ),
-        );
-        final textPainter = TextPainter(
-          text: textSpan,
-          textDirection: TextDirection.ltr,
-        );
-        textPainter.layout();
-        textPainter.paint(canvas, point.offset);
+          break;
+          
+        case DrawingTool.text:
+          if (point.text != null) {
+            final textSpan = TextSpan(
+              text: point.text,
+              style: TextStyle(
+                color: point.paint.color,
+                fontSize: 20,
+              ),
+            );
+            final textPainter = TextPainter(
+              text: textSpan,
+              textDirection: TextDirection.ltr,
+            );
+            textPainter.layout();
+            textPainter.paint(canvas, point.offset);
+          }
+          break;
       }
     }
   }
@@ -330,13 +339,13 @@ class DrawingPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// 绘图点数据类 - 存储单个绘图操作的所有必要信息
+// 绘图点数据类 - 支持 JSON 序列化
 class DrawingPoint {
-  final Offset offset;                             // 位置
-  final Offset? startPoint;                        // 起始点（用于箭头等）
-  final Paint paint;                               // 画笔
-  final DrawingTool type;                          // 工具类型
-  final String? text;                              // 文本内容
+  final Offset offset;
+  final Offset? startPoint;
+  final Paint paint;
+  final DrawingTool type;
+  final String? text;
 
   DrawingPoint({
     required this.offset,
@@ -345,4 +354,45 @@ class DrawingPoint {
     required this.type,
     this.text,
   });
+
+  // 转换为 JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'offset': {'dx': offset.dx, 'dy': offset.dy},
+      'startPoint': startPoint != null 
+          ? {'dx': startPoint!.dx, 'dy': startPoint!.dy}
+          : null,
+      'paint': {
+        'color': paint.color.value,
+        'strokeWidth': paint.strokeWidth,
+        'strokeCap': paint.strokeCap.index,
+        'style': paint.style.index,
+      },
+      'type': type.index,
+      'text': text,
+    };
+  }
+
+  // 从 JSON 创建实例
+  factory DrawingPoint.fromJson(Map<String, dynamic> json) {
+    return DrawingPoint(
+      offset: Offset(
+        json['offset']['dx'],
+        json['offset']['dy'],
+      ),
+      startPoint: json['startPoint'] != null
+          ? Offset(
+              json['startPoint']['dx'],
+              json['startPoint']['dy'],
+            )
+          : null,
+      paint: Paint()
+        ..color = Color(json['paint']['color'])
+        ..strokeWidth = json['paint']['strokeWidth']
+        ..strokeCap = StrokeCap.values[json['paint']['strokeCap']]
+        ..style = PaintingStyle.values[json['paint']['style']],
+      type: DrawingTool.values[json['type']],
+      text: json['text'],
+    );
+  }
 } 
