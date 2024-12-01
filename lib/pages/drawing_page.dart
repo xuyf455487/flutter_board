@@ -51,7 +51,7 @@ class _DrawingPageState extends State<DrawingPage> {
             onPressed: () {
               final jsonString = exportToJson();
               // 这里可以保存到文件或其他存储
-              print(jsonString);  // 临时打印用于测试
+              TestJson.testJson = jsonString;
             },
           ),
           // 添加导入按钮
@@ -121,6 +121,11 @@ class _DrawingPageState extends State<DrawingPage> {
                       icon: Icons.text_fields,
                       tool: DrawingTool.text,
                       tooltip: '文字',
+                    ),
+                    _buildToolButton(
+                      icon: Icons.pan_tool,
+                      tool: DrawingTool.move,
+                      tooltip: '移动',
                     ),
                   ],
                 ),

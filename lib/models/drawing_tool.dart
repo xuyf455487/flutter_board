@@ -6,4 +6,5 @@ enum DrawingTool {
   oval,     // 椭圆工具
   mosaic,   // 马赛克工具
   text,     // 文字工具
+  move,     // 移动工具
 } 
