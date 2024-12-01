@@ -99,12 +99,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
               }
             },
             onPanEnd: (_) {
-              if (widget.selectedTool != DrawingTool.arrow) {
-                widget.onDrawingPointsChanged([
-                  ...widget.drawingPoints,
-                  null,
-                ]);
-              }
+              widget.onDrawingPointsChanged([
+                ...widget.drawingPoints,
+                null,
+              ]);
               startPoint = null;
               if (widget.selectedTool == DrawingTool.move) {
                 selectedPoint = null;
