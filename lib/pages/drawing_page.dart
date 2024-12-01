@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_board/test_json.dart';
 import '../widgets/drawing_canvas.dart';
 import '../models/drawing_tool.dart';
+import '../models/drawing_controller.dart';
 
 // 绘图页面组件
 class DrawingPage extends StatefulWidget {
@@ -14,43 +16,65 @@ class DrawingPage extends StatefulWidget {
 
 // 绘图页面状态类
 class _DrawingPageState extends State<DrawingPage> {
-  Color selectedColor = Colors.red;                 // 当前选中的颜色
-  List<DrawingPoint?> drawingPoints = [];          // 绘图点列表
-  DrawingTool selectedTool = DrawingTool.pen;      // 当前选中的工具
-  double selectedSize = 2.0;                       // 当前选中的画笔大小
+  final DrawingController _controller = DrawingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   // 将绘画内容转换为 JSON 字符串
   String exportToJson() {
-    final List<Map<String, dynamic>> jsonList = drawingPoints
-        .where((point) => point != null)
-        .map((point) => point!.toJson())
-        .toList();
-    return jsonEncode(jsonList);
+    return jsonEncode(_controller.toJson());
   }
 
   // 从 JSON 字符串还原绘画内容
   void importFromJson(String jsonString) {
-    final List<dynamic> jsonList = jsonDecode(jsonString);
-    setState(() {
-      drawingPoints = jsonList
-          .map((json) => DrawingPoint.fromJson(json))
-          .toList();
-    });
+    final json = jsonDecode(jsonString);
+    _controller.fromJson(json);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Drawing Board'),        // 页面标题
+        title: const Text('Drawing Board'),
         actions: [
+          // 添加撤销按钮
+          IconButton(
+            icon: const Icon(Icons.undo),
+            tooltip: '撤销 (Ctrl+Z)',
+            onPressed: _controller.canUndo ? () {
+              setState(() {
+                _controller.undo();
+              });
+            } : null,
+          ),
+          // 添加恢复按钮
+          IconButton(
+            icon: const Icon(Icons.redo),
+            tooltip: '恢复 (Ctrl+Y)',
+            onPressed: _controller.canRedo ? () {
+              setState(() {
+                _controller.redo();
+              });
+            } : null,
+          ),
           // 添加导出按钮
           IconButton(
             icon: const Icon(Icons.save),
             tooltip: '导出',
             onPressed: () {
               final jsonString = exportToJson();
-              // 这里可以保存到文件或其他存储
               TestJson.testJson = jsonString;
             },
           ),
@@ -59,108 +83,130 @@ class _DrawingPageState extends State<DrawingPage> {
             icon: const Icon(Icons.folder_open),
             tooltip: '导入',
             onPressed: () {
-              // 这里应该有文件选择或输入对话框
-              // 临时使用一个示例 JSON 进行测试
-              // const testJson = '[{"offset":{"dx":100,"dy":100},"paint":{"color":4294198070,"strokeWidth":2,"strokeCap":1,"style":0},"type":0}]';
               importFromJson(TestJson.testJson);
             },
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          // 绘图画布
-          DrawingCanvas(
-            drawingPoints: drawingPoints,          // 传递绘图点数据
-            selectedColor: selectedColor,          // 传递选中的颜色
-            selectedTool: selectedTool,            // 传递选中的工具
-            selectedSize: selectedSize,            // 传递选中的大小
-            onDrawingPointsChanged: (points) {     // 绘图点变化回调
-              setState(() {
-                drawingPoints = points;
-              });
-            },
-          ),
-          // 底部工具栏
-          Positioned(
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: Column(
-              children: [
-                // 工具按钮行
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildToolButton(
-                      icon: Icons.edit,
-                      tool: DrawingTool.pen,
-                      tooltip: '画笔',
-                    ),
-                    _buildToolButton(
-                      icon: Icons.arrow_forward,
-                      tool: DrawingTool.arrow,
-                      tooltip: '箭头',
-                    ),
-                    _buildToolButton(
-                      icon: Icons.rectangle_outlined,
-                      tool: DrawingTool.rectangle,
-                      tooltip: '矩形',
-                    ),
-                    _buildToolButton(
-                      icon: Icons.circle_outlined,
-                      tool: DrawingTool.oval,
-                      tooltip: '椭圆',
-                    ),
-                    _buildToolButton(
-                      icon: Icons.grid_4x4,
-                      tool: DrawingTool.mosaic,
-                      tooltip: '马赛克',
-                    ),
-                    _buildToolButton(
-                      icon: Icons.text_fields,
-                      tool: DrawingTool.text,
-                      tooltip: '文字',
-                    ),
-                    _buildToolButton(
-                      icon: Icons.pan_tool,
-                      tool: DrawingTool.move,
-                      tooltip: '移动',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // 颜色选择行
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildColorButton(Colors.red),
-                    _buildColorButton(Colors.blue),
-                    _buildColorButton(Colors.green),
-                    _buildColorButton(Colors.black),
-                    IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        setState(() {
-                          drawingPoints.clear();
-                        });
-                      },
-                    ),
-                  ],
-                ),
-                // 大小选择行
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildSizeButton('小', 2.0),
-                    _buildSizeButton('中', 5.0),
-                    _buildSizeButton('大', 10.0),
-                  ],
-                ),
-              ],
+      body: Focus(
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (HardwareKeyboard.instance.isControlPressed) {
+            if (event is KeyDownEvent) {
+              if (event.logicalKey == LogicalKeyboardKey.keyZ) {
+                if (_controller.canUndo) {
+                  setState(() {
+                    _controller.undo();
+                  });
+                }
+                return KeyEventResult.handled;
+              } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
+                if (_controller.canRedo) {
+                  setState(() {
+                    _controller.redo();
+                  });
+                }
+                return KeyEventResult.handled;
+              }
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Stack(
+          children: [
+            // 绘图画布
+            DrawingCanvas(
+              drawingPoints: _controller.points,
+              selectedColor: _controller.selectedColor,
+              selectedTool: _controller.selectedTool,
+              selectedSize: _controller.selectedSize,
+              onDrawingPointsChanged: (points) {
+                setState(() {
+                  _controller.points = points;
+                });
+              },
             ),
-          ),
-        ],
+            // 底部工具栏
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: Column(
+                children: [
+                  // 工具按钮行
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildToolButton(
+                        icon: Icons.edit,
+                        tool: DrawingTool.pen,
+                        tooltip: '画笔',
+                      ),
+                      _buildToolButton(
+                        icon: Icons.arrow_forward,
+                        tool: DrawingTool.arrow,
+                        tooltip: '箭头',
+                      ),
+                      _buildToolButton(
+                        icon: Icons.rectangle_outlined,
+                        tool: DrawingTool.rectangle,
+                        tooltip: '矩形',
+                      ),
+                      _buildToolButton(
+                        icon: Icons.circle_outlined,
+                        tool: DrawingTool.oval,
+                        tooltip: '椭圆',
+                      ),
+                      _buildToolButton(
+                        icon: Icons.grid_4x4,
+                        tool: DrawingTool.mosaic,
+                        tooltip: '马赛克',
+                      ),
+                      _buildToolButton(
+                        icon: Icons.text_fields,
+                        tool: DrawingTool.text,
+                        tooltip: '文字',
+                      ),
+                      _buildToolButton(
+                        icon: Icons.pan_tool,
+                        tool: DrawingTool.move,
+                        tooltip: '移动',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // 颜色选择行
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildColorButton(Colors.red),
+                      _buildColorButton(Colors.blue),
+                      _buildColorButton(Colors.green),
+                      _buildColorButton(Colors.black),
+                      IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _controller.clear();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  // 大小选择行
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildSizeButton('小', 2.0),
+                      _buildSizeButton('中', 5.0),
+                      _buildSizeButton('大', 10.0),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -176,11 +222,11 @@ class _DrawingPageState extends State<DrawingPage> {
       child: IconButton(
         icon: Icon(
           icon,
-          color: selectedTool == tool ? Colors.blue : Colors.grey,  // 选中状态显示蓝色
+          color: _controller.selectedTool == tool ? Colors.blue : Colors.grey,
         ),
         onPressed: () {
           setState(() {
-            selectedTool = tool;                   // 更新选中的工具
+            _controller.setTool(tool);
           });
         },
       ),
@@ -192,7 +238,7 @@ class _DrawingPageState extends State<DrawingPage> {
     return GestureDetector(
       onTap: () {
         setState(() {
-          selectedColor = color;                   // 更新选中的颜色
+          _controller.setColor(color);
         });
       },
       child: Container(
@@ -202,7 +248,7 @@ class _DrawingPageState extends State<DrawingPage> {
           color: color,
           shape: BoxShape.circle,
           border: Border.all(
-            color: selectedColor == color ? Colors.white : Colors.grey,  // 选中状态显示白色边框
+            color: _controller.selectedColor == color ? Colors.white : Colors.grey,
             width: 2,
           ),
         ),
@@ -215,12 +261,12 @@ class _DrawingPageState extends State<DrawingPage> {
     return TextButton(
       onPressed: () {
         setState(() {
-          selectedSize = size;                     // 更新选中的大小
+          _controller.setSize(size);
         });
       },
       style: TextButton.styleFrom(
-        backgroundColor: selectedSize == size ? Colors.blue : Colors.grey[300],
-        foregroundColor: selectedSize == size ? Colors.white : Colors.black,
+        backgroundColor: _controller.selectedSize == size ? Colors.blue : Colors.grey[300],
+        foregroundColor: _controller.selectedSize == size ? Colors.white : Colors.black,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
